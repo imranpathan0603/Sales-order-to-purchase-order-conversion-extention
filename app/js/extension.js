@@ -26,7 +26,8 @@ const state = {
     dirty: false,
     createdPoId: null,
     apiRootEndPoint: null,
-    organizationId: null
+    organizationId: null,
+    organizationDataCenterExtension: null   // <-- NEW
 };
 
 // ============================================================
@@ -146,10 +147,12 @@ async function loadOrganizationContext() {
 
     state.apiRootEndPoint = organization.api_root_endpoint.replace(/\/+$/, '');
     state.organizationId = organization.organization_id;
+    state.organizationDataCenterExtension = organization.data_center_extension || '.com';   // <-- NEW
 
     log('ORG', 'Context loaded', {
         apiRootEndPoint: state.apiRootEndPoint,
-        organizationId: state.organizationId
+        organizationId: state.organizationId,
+        dataCenterExtension: state.organizationDataCenterExtension   // <-- NEW
     });
 }
 
@@ -1054,6 +1057,38 @@ function showSuccessScreen(po) {
     dom.successScreen.style.display = 'block';
 }
 
+/**
+ * Build the correct, data-center-aware Zoho Books URL for the newly
+ * created Purchase Order and open it in a new browser tab.
+ *
+ * The URL is generated dynamically from the organization's
+ * data_center_extension (e.g. ".in", ".com", ".eu", ".com.au", ".jp")
+ * so the same widget works across every Zoho data center.
+ *
+ * Example: data_center_extension = ".in"
+ *   → https://books.zoho.in/app/#/purchaseorders/3103485000049634054
+ */
+function openCreatedPurchaseOrder() {
+    try {
+        const poId = state.createdPoId;
+
+        if (!poId) {
+            logError('OPEN_PO', 'No Purchase Order ID available.');
+            showError('No Purchase Order to open. Please create one first.', false);
+            return;
+        }
+
+        const dcExt = state.organizationDataCenterExtension || '.com';
+        const url = `https://books.zoho${dcExt}/app/#/purchaseorders/${encodeURIComponent(poId)}`;
+
+        log('OPEN_PO', 'Opening Purchase Order URL: ' + url);
+        window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+        logError('OPEN_PO', 'Failed to open Purchase Order', err);
+        showError('Unable to open Purchase Order in a new tab.', false);
+    }
+}
+
 function confirmDiscard() {
     if (!state.dirty || state.createdPoId) {
         ZFAPPS.invoke('CLOSE');
@@ -1120,9 +1155,7 @@ function wireEvents() {
     dom.btnErrorClose.addEventListener('click', hideError);
 
     dom.btnSuccessClose.addEventListener('click', () => ZFAPPS.invoke('CLOSE'));
-    dom.btnSuccessOpen.addEventListener('click', () => {
-        ZFAPPS.invoke('NAVIGATE', { url: `/books/#/purchaseorders/${state.createdPoId}` });
-    });
+    dom.btnSuccessOpen.addEventListener('click', openCreatedPurchaseOrder);   // <-- CHANGED
 
     window.addEventListener('beforeunload', (e) => {
         if (state.dirty && !state.createdPoId) {
