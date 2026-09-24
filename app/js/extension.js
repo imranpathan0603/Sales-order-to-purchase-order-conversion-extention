@@ -11,9 +11,6 @@
 const COUNTED_PO_STATUSES = ['draft', 'open', 'partially_received', 'received', 'billed'];
 const PER_PAGE = 200;
 
-// Must exactly match the connectionLinkName generated when you created the
-// connection under Settings -> Developer Space -> Connections, and pasted
-// into plugin-manifest.json -> usedConnections[].connectionLinkName
 const CONNECTION_LINK_NAME = 'bookconnectionwigdet';
 
 // ============================================================
@@ -28,7 +25,7 @@ const state = {
     creatingPurchaseOrder: false,
     dirty: false,
     createdPoId: null,
-    apiRootEndPoint: null,   // absolute base URL, e.g. https://www.zohoapis.com/books/v3
+    apiRootEndPoint: null,
     organizationId: null
 };
 
@@ -83,6 +80,10 @@ function log(stage, message, data) {
     console.log(`[${stage}] ${message}`, data !== undefined ? data : '');
 }
 
+function logError(stage, message, data) {
+    console.error(`[${stage}] ${message}`, data !== undefined ? data : '');
+}
+
 function showLoading(msg) {
     dom.loadingMessage.textContent = msg || 'Loading...';
     dom.loadingOverlay.classList.remove('hidden');
@@ -125,7 +126,6 @@ function getUrlParameter(name) {
     return new URLSearchParams(window.location.search).get(name);
 }
 
-/** Every ZFAPPS.request() call needs organization_id as a query param. */
 function withOrgId(extraParams) {
     return [
         { key: 'organization_id', value: String(state.organizationId) },
@@ -134,7 +134,7 @@ function withOrgId(extraParams) {
 }
 
 // ============================================================
-// ORGANIZATION CONTEXT — must load before any ZFAPPS.request() call
+// ORGANIZATION CONTEXT
 // ============================================================
 
 async function loadOrganizationContext() {
@@ -183,12 +183,15 @@ function normalizeSalesOrder(so) {
         taxId: item.tax_id || null,
         taxPercentage: parseFloat(item.tax_percentage) || 0,
         discount: parseFloat(item.discount) || 0,
-        unit: item.unit || ''
+        unit: item.unit || '',
+        warehouseId: item.warehouse_id || item.location_id || null
     }));
 
     return {
         id: so.salesorder_id,
         number: so.salesorder_number,
+        customerId: so.customer_id || '',
+        customerName: so.customer_name || '',
         referenceNumber: so.reference_number || '',
         notes: so.notes || '',
         terms: so.terms || '',
@@ -197,7 +200,7 @@ function normalizeSalesOrder(so) {
 }
 
 // ============================================================
-// PURCHASE ORDER FETCHING — absolute URL + organization_id + connection
+// PURCHASE ORDER FETCHING
 // ============================================================
 
 async function getAllPurchaseOrders() {
@@ -233,25 +236,158 @@ async function getAllPurchaseOrders() {
         page++;
     }
 
-    log('PO_FETCH', `Total: ${all.length}`);
+    log('PO_FETCH', `Total fetched (summary/list records): ${all.length}`);
     return all;
 }
 
-function filterRelatedPurchaseOrders(allPOs, soNumber) {
-    const related = allPOs.filter((po) => {
-        const refMatch = po.reference_number && po.reference_number.includes(soNumber);
-        const customMatch = (po.custom_fields || []).some(
-            (cf) => cf.value && String(cf.value).includes(soNumber)
-        );
-        const lineMatch = (po.line_items || []).some(
-            (li) => li.salesorder_item_id && String(li.salesorder_item_id).length > 0
-        );
-        return refMatch || customMatch || lineMatch;
+/**
+ * The LIST endpoint above does not reliably return line_items for each PO —
+ * only the DETAIL endpoint does. This fetches the full record for one PO id.
+ */
+// async function fetchPurchaseOrderDetails(purchaseOrderId) {
+//     const response = await ZFAPPS.request({
+//         url: `${state.apiRootEndPoint}/purchaseorders/${purchaseOrderId}`,
+//         method: 'GET',
+//         url_query: withOrgId(),
+//         connection_link_name: CONNECTION_LINK_NAME
+//     });
+
+//     let data;
+//     try {
+//         data = JSON.parse(response.data.body);
+//     } catch (e) {
+//         throw new Error('Failed to parse PO detail response: ' + e.message);
+//     }
+
+//     if (data.code !== 0) {
+//         throw new Error(data.message || `Failed to fetch Purchase Order ${purchaseOrderId}.`);
+//     }
+
+//     return data.purchaseorder;
+// }
+/**
+ * The LIST endpoint does not reliably return line_items for each PO —
+ * only the DETAIL endpoint does. This fetches the full record for one PO id.
+ *
+ * IMPORTANT: without an explicit Accept: application/json header, this
+ * endpoint can return the Purchase Order's PDF/print template HTML instead
+ * of the JSON record (visible as "<!--The below style_start tag...").
+ * The header below forces the JSON response.
+ */
+async function fetchPurchaseOrderDetails(purchaseOrderId) {
+    const response = await ZFAPPS.request({
+        url: `${state.apiRootEndPoint}/purchaseorders/${purchaseOrderId}`,
+        method: 'GET',
+        url_query: withOrgId(),
+        header: [
+            { key: 'Accept', value: 'application/json' }
+        ],
+        connection_link_name: CONNECTION_LINK_NAME
     });
 
-    const valid = related.filter((po) => COUNTED_PO_STATUSES.includes(po.status));
-    log('PO_FILTER', `Related: ${related.length}, Valid: ${valid.length}`);
-    return valid;
+    const rawBody = response && response.data && response.data.body;
+
+    // Defensive check: if we still somehow get HTML back, fail fast with a
+    // clear message instead of letting JSON.parse throw a cryptic error.
+    if (typeof rawBody === 'string' && rawBody.trim().startsWith('<')) {
+        logError('PO_DETAIL', `Received HTML instead of JSON for PO ${purchaseOrderId} — raw body below`, rawBody);
+        throw new Error(`Received HTML (print template) instead of JSON for PO ${purchaseOrderId}.`);
+    }
+
+    let data;
+
+    console.log('PO Detail raw response for',purchaseOrderId,rawBody,response.data);
+    try {
+        data = JSON.parse(rawBody);
+    } catch (e) {
+        logError('PO_DETAIL', `Non-JSON response for PO ${purchaseOrderId} — raw body below`, rawBody);
+        throw new Error(`Failed to parse PO detail response for ${purchaseOrderId}: ` + e.message);
+    }
+
+    if (data.code !== 0) {
+        throw new Error(data.message || `Failed to fetch Purchase Order ${purchaseOrderId}.`);
+    }
+
+    return data.purchaseorder;
+}
+
+
+/**
+ * Filter list-summary POs to those referencing this Sales Order, then fetch
+ * FULL DETAIL (with real line_items) for each match in parallel. Without
+ * this step, line_items is empty/incomplete on list records and allocation
+ * silently sees zero purchased quantity for every existing PO.
+ */
+async function getRelatedPurchaseOrdersWithLineItems(allPOs, soNumber) {
+    const normalizedSoNumber = String(soNumber || '').trim();
+
+    const summaryMatches = allPOs.filter((po) => {
+        const ref = String(po.reference_number || '').trim();
+        return ref !== '' && ref === normalizedSoNumber;
+    });
+
+    const countedSummaryMatches = summaryMatches.filter((po) => COUNTED_PO_STATUSES.includes(po.status));
+
+    log('PO_FILTER', `Reference-matched: ${summaryMatches.length}, Counted status: ${countedSummaryMatches.length}`, {
+        soNumber: normalizedSoNumber,
+        matchedPoNumbers: summaryMatches.map((p) => p.purchaseorder_number)
+    });
+
+    if (countedSummaryMatches.length === 0) return [];
+
+    const detailed = await Promise.all(
+        countedSummaryMatches.map(async (po) => {
+            try {
+                const full = await fetchPurchaseOrderDetails(po.purchaseorder_id);
+                log('PO_DETAIL', `Fetched line_items for ${full.purchaseorder_number}`, full.line_items);
+                return full;
+            } catch (err) {
+                logError('PO_DETAIL', `Failed to fetch detail for PO ${po.purchaseorder_id}, excluding from allocation`, err);
+                return null;
+            }
+        })
+    );
+
+    return detailed.filter(Boolean);
+}
+
+
+/**
+ * Debug helper — prints every related PO's line items to the console
+ * as a readable table: PO number, item name, item_id, quantity, status.
+ */
+function printPurchaseOrderLineItems(relatedPOs) {
+    if (!relatedPOs || relatedPOs.length === 0) {
+        log('PO_LINES', 'No related Purchase Orders to print.');
+        return;
+    }
+
+    const rows = [];
+    relatedPOs.forEach((po) => {
+        (po.line_items || []).forEach((li) => {
+            rows.push({
+                'PO Number': po.purchaseorder_number,
+                'PO Status': po.status,
+                'Item Name': li.name,
+                'Item ID': li.item_id,
+                'SO Line Item ID': li.salesorder_item_id || '(none)',
+                'Quantity': li.quantity,
+                'Rate': li.rate
+            });
+        });
+    });
+
+    if (rows.length === 0) {
+        logError('PO_LINES', 'Related POs found but none had any line_items — detail fetch may be failing.', relatedPOs);
+        return;
+    }
+
+    log('PO_LINES', `Printing ${rows.length} line item(s) across ${relatedPOs.length} PO(s):`);
+    if (console.table) {
+        console.table(rows);
+    } else {
+        rows.forEach((r) => console.log(r));
+    }
 }
 
 // ============================================================
@@ -259,6 +395,8 @@ function filterRelatedPurchaseOrders(allPOs, soNumber) {
 // ============================================================
 
 function calculateAllAllocations(salesOrder, relatedPOs) {
+    log('ALLOCATION', 'Calculating for SO', salesOrder.number);
+
     const allocations = {};
     salesOrder.lineItems.forEach((item) => {
         allocations[item.lineItemId] = {
@@ -267,14 +405,18 @@ function calculateAllAllocations(salesOrder, relatedPOs) {
             name: item.name,
             salesOrderQuantity: item.quantity,
             allocatedQuantity: 0,
-            remainingQuantity: item.quantity
+            remainingQuantity: item.quantity,
+            overAllocated: false
         };
     });
 
     relatedPOs.forEach((po) => {
+        log('ALLOCATION', `Processing PO ${po.purchaseorder_number}`, po.line_items);
         (po.line_items || []).forEach((poLine) => {
             const poQty = parseFloat(poLine.quantity) || 0;
             if (poQty <= 0) return;
+
+            log('ALLOCATION', `PO ${po.purchaseorder_number} line "${poLine.name}" item_id=${poLine.item_id} qty=${poQty}`);
 
             let target = null;
             if (poLine.salesorder_item_id) {
@@ -291,49 +433,79 @@ function calculateAllAllocations(salesOrder, relatedPOs) {
                 ) || candidates[0];
             }
 
-            if (target) target.allocatedQuantity += poQty;
+            if (target) {
+                target.allocatedQuantity = parseFloat((target.allocatedQuantity + poQty).toFixed(6));
+            } else {
+                logError('ALLOCATION', 'Unmatched PO line item — could not link to any SO line', {
+                    purchaseorder_number: po.purchaseorder_number,
+                    poLine
+                });
+            }
         });
     });
 
     Object.values(allocations).forEach((a) => {
-        a.remainingQuantity = a.salesOrderQuantity - a.allocatedQuantity;
+        const remaining = a.salesOrderQuantity - a.allocatedQuantity;
+        a.overAllocated = remaining < 0;
+        a.remainingQuantity = Math.max(remaining, 0);
+
+        if (a.overAllocated) {
+            logError('ALLOCATION', `OVER-ALLOCATED: ${a.name}`, {
+                salesOrderQty: a.salesOrderQuantity,
+                purchasedQty: a.allocatedQuantity,
+                excess: a.allocatedQuantity - a.salesOrderQuantity
+            });
+        }
     });
 
+    log('ALLOCATION', 'Final allocation result', allocations);
     return allocations;
 }
 
 // ============================================================
-// VENDOR API — absolute URL, contact_type=vendor, organization_id, connection
+// VENDOR API
 // ============================================================
 
 async function fetchVendors(searchText) {
-    const params = withOrgId([
-        { key: 'contact_type', value: 'vendor' }, // real Books API param
-        { key: 'page', value: '1' },
-        { key: 'per_page', value: '200' }
-    ]);
-    if (searchText) params.push({ key: 'search_text', value: searchText });
+    let all = [];
+    let page = 1;
+    let hasMore = true;
 
-    log('VENDOR', 'Fetching vendors from API...');
-    const response = await ZFAPPS.request({
-        url: `${state.apiRootEndPoint}/contacts`,
-        method: 'GET',
-        url_query: params,
-        connection_link_name: CONNECTION_LINK_NAME
-    });
+    while (hasMore) {
+        const params = withOrgId([
+            { key: 'contact_type', value: 'vendor' },
+            { key: 'page', value: String(page) },
+            { key: 'per_page', value: String(PER_PAGE) }
+        ]);
+        if (searchText) params.push({ key: 'search_text', value: searchText });
 
-    let data;
-    try {
-        data = JSON.parse(response.data.body);
-    } catch (e) {
-        throw new Error('Failed to parse vendor response: ' + e.message);
+        log('VENDOR', `Fetching vendors page ${page}...`);
+        const response = await ZFAPPS.request({
+            url: `${state.apiRootEndPoint}/contacts`,
+            method: 'GET',
+            url_query: params,
+            connection_link_name: CONNECTION_LINK_NAME
+        });
+
+        let data;
+        try {
+            data = JSON.parse(response.data.body);
+        } catch (e) {
+            throw new Error('Failed to parse vendor response: ' + e.message);
+        }
+
+        if (data.code !== 0) {
+            throw new Error(data.message || 'Failed to fetch vendors.');
+        }
+
+        all = all.concat(data.contacts || []);
+        hasMore = (data.page_context || {}).has_more_page === true;
+        page++;
+
+        if (page > 5) break;
     }
 
-    if (data.code !== 0) {
-        throw new Error(data.message || 'Failed to fetch vendors.');
-    }
-
-    const vendors = (data.contacts || []).map((v) => ({
+    const vendors = all.map((v) => ({
         id: v.contact_id,
         name: v.contact_name,
         companyName: v.company_name || '',
@@ -461,7 +633,7 @@ async function openVendorDropdown() {
         state.vendors = vendors;
         renderVendorDropdown(vendors, dom.vendorSearch.value);
     } catch (err) {
-        log('ERROR', 'Vendor fetch failed', err);
+        logError('VENDOR', 'Vendor fetch failed', err);
         showVendorDropdownError('Unable to load vendors. Please try again.');
     } finally {
         state.vendorsLoading = false;
@@ -475,7 +647,7 @@ async function openVendorDropdown() {
 function renderHeader(salesOrder) {
     dom.headerSoNumber.textContent = salesOrder.number;
     dom.soNumberDisplay.value = salesOrder.number;
-    dom.referenceNumber.value = salesOrder.referenceNumber || salesOrder.number;
+    dom.referenceNumber.value = salesOrder.number;
 }
 
 function renderItems(allocations) {
@@ -488,8 +660,9 @@ function renderItems(allocations) {
         );
         if (!soItem) return;
 
-        const isFullyPurchased = a.remainingQuantity <= 0;
-        const isOverAllocated = a.allocatedQuantity > a.salesOrderQuantity;
+        const isFullyPurchased = a.remainingQuantity <= 0 && !a.overAllocated;
+        const isOverAllocated = a.overAllocated;
+        const isBlocked = isFullyPurchased || isOverAllocated;
 
         const tr = document.createElement('tr');
         if (isOverAllocated) tr.className = 'over-allocated';
@@ -518,8 +691,8 @@ function renderItems(allocations) {
         const remClass = isOverAllocated ? 'remaining-negative' : (isFullyPurchased ? 'remaining-zero' : '');
         tdInfo.innerHTML = `<div class="qty-info">` +
             `<span><span class="label">SO Qty:</span> <span class="value">${a.salesOrderQuantity}</span></span>` +
-            `<span><span class="label">Allocated:</span> <span class="value">${a.allocatedQuantity}</span></span>` +
-            `<span><span class="label">Available:</span> <span class="value ${remClass}">${a.remainingQuantity}</span></span>` +
+            `<span><span class="label">Purchased:</span> <span class="value">${a.allocatedQuantity}</span></span>` +
+            `<span><span class="label">Remaining:</span> <span class="value ${remClass}">${a.remainingQuantity}</span></span>` +
             `</div>`;
         tr.appendChild(tdInfo);
 
@@ -529,10 +702,10 @@ function renderItems(allocations) {
         qtyInput.className = 'cell-input qty-input';
         qtyInput.min = '0';
         qtyInput.step = '1';
-        qtyInput.value = isFullyPurchased || isOverAllocated ? '0' : String(Math.max(0, a.remainingQuantity));
+        qtyInput.value = isBlocked ? '0' : String(Math.max(0, a.remainingQuantity));
         qtyInput.dataset.lineItemId = a.lineItemId;
         qtyInput.dataset.maxQty = String(Math.max(0, a.remainingQuantity));
-        qtyInput.disabled = isFullyPurchased || isOverAllocated;
+        qtyInput.disabled = isBlocked;
         qtyInput.addEventListener('input', onQuantityChange);
         tdQty.appendChild(qtyInput);
         tr.appendChild(tdQty);
@@ -641,7 +814,7 @@ function onQuantityChange(e) {
 
     if (entered > maxQty) {
         input.classList.add('error');
-        input.title = `Exceeds available quantity (${maxQty})`;
+        input.title = `Only ${maxQty} quantity is available for this item.`;
     } else {
         input.classList.remove('error');
         input.title = '';
@@ -681,7 +854,6 @@ function collectFormData() {
         vendorId: dom.vendorId.value,
         date: dom.orderDate.value,
         deliveryDate: dom.deliveryDate.value,
-        referenceNumber: dom.referenceNumber.value,
         lineItems,
         notes: dom.notes.value,
         terms: dom.terms.value
@@ -703,20 +875,26 @@ function validateBeforeCreate(formData, freshAllocations) {
         const alloc = freshAllocations[li.lineItemId];
         if (!alloc) return;
 
-        if (alloc.remainingQuantity <= 0 && li.poQuantity > 0) {
-            errors.push({ message: `${alloc.name} is fully purchased. Available: 0, Entered: ${li.poQuantity}` });
-        }
-        if (li.poQuantity > alloc.remainingQuantity) {
-            errors.push({ message: `${alloc.name}: quantity exceeds available. Available: ${alloc.remainingQuantity}, Entered: ${li.poQuantity}` });
-        }
         if (li.poQuantity < 0) {
             errors.push({ message: `${alloc.name}: quantity cannot be negative.` });
+            return;
+        }
+
+        if (alloc.overAllocated && li.poQuantity > 0) {
+            errors.push({ message: `${alloc.name} is OVER-ALLOCATED. No further quantity can be purchased.` });
+            return;
+        }
+
+        if (li.poQuantity > alloc.remainingQuantity) {
+            errors.push({
+                message: `${alloc.name}: Only ${alloc.remainingQuantity} quantity is available for this item.`
+            });
         }
     });
 
     Object.values(freshAllocations).forEach((a) => {
-        if (a.allocatedQuantity > a.salesOrderQuantity) {
-            errors.push({ message: `OVER-ALLOCATED: ${a.name} has ${a.allocatedQuantity} allocated against SO quantity ${a.salesOrderQuantity}.` });
+        if (a.overAllocated) {
+            errors.push({ message: `OVER-ALLOCATED: ${a.name} has ${a.allocatedQuantity} purchased against SO quantity ${a.salesOrderQuantity}.` });
         }
     });
 
@@ -740,12 +918,12 @@ function showValidationErrors(errors) {
 // PURCHASE ORDER CREATION
 // ============================================================
 
-function buildPurchaseOrderPayload(formData) {
+function buildPurchaseOrderPayload(formData, salesOrderNumber) {
     return {
         vendor_id: formData.vendorId,
         date: formData.date,
         delivery_date: formData.deliveryDate || formData.date,
-        reference_number: formData.referenceNumber,
+        reference_number: salesOrderNumber,
         line_items: formData.lineItems
             .filter((li) => li.poQuantity > 0)
             .map((li) => ({
@@ -765,7 +943,7 @@ function buildPurchaseOrderPayload(formData) {
 }
 
 async function createPurchaseOrder(payload) {
-    log('CREATE_PO', 'Submitting...');
+    log('CREATE_PO', 'Submitting...', payload);
     const response = await ZFAPPS.request({
         url: `${state.apiRootEndPoint}/purchaseorders`,
         method: 'POST',
@@ -800,7 +978,7 @@ async function handleCreatePurchaseOrder() {
     if (state.creatingPurchaseOrder) return;
     state.creatingPurchaseOrder = true;
     dom.btnCreatePo.disabled = true;
-    dom.btnCreatePo.textContent = 'Creating...';
+    dom.btnCreatePo.textContent = 'Creating Purchase Order...';
 
     try {
         const formData = collectFormData();
@@ -815,26 +993,38 @@ async function handleCreatePurchaseOrder() {
         const freshSO = await fetchSalesOrder();
         const normalizedSO = normalizeSalesOrder(freshSO);
         const allPOs = await getAllPurchaseOrders();
-        const relatedPOs = filterRelatedPurchaseOrders(allPOs, normalizedSO.number);
+        const relatedPOs = await getRelatedPurchaseOrdersWithLineItems(allPOs, normalizedSO.number);
+        printPurchaseOrderLineItems(relatedPOs); // <-- prints the table
+
         const freshAllocations = calculateAllAllocations(normalizedSO, relatedPOs);
 
         hideLoading();
 
         const errors = validateBeforeCreate(formData, freshAllocations);
         if (errors.length > 0) {
-            showValidationErrors(errors);
-            const quantityChanged = errors.some((e) => e.message.includes('exceeds'));
+            const quantityChanged = errors.some((e) =>
+                e.message.includes('is available for this item') || e.message.includes('OVER-ALLOCATED')
+            );
+
             if (quantityChanged) {
+                showValidationErrors([{
+                    message: 'The available quantity has changed. Please review the updated quantities below.'
+                }, ...errors]);
                 state.salesOrder = normalizedSO;
                 state.lineItems = freshAllocations;
+                renderHeader(normalizedSO);
                 renderItems(freshAllocations);
                 dom.footerStatus.textContent = 'Available quantities updated. Please review.';
+            } else {
+                showValidationErrors(errors);
             }
             return;
         }
 
         showLoading('Creating Purchase Order...');
-        const result = await createPurchaseOrder(buildPurchaseOrderPayload(formData));
+        const result = await createPurchaseOrder(
+            buildPurchaseOrderPayload(formData, normalizedSO.number)
+        );
 
         state.createdPoId = result.id;
         hideLoading();
@@ -842,7 +1032,7 @@ async function handleCreatePurchaseOrder() {
         state.dirty = false;
     } catch (err) {
         hideLoading();
-        log('ERROR', 'Create PO failed', err);
+        logError('ERROR', 'Create PO failed', err);
         showError(err.message || 'Unable to create Purchase Order.', true);
     } finally {
         state.creatingPurchaseOrder = false;
@@ -943,7 +1133,7 @@ function wireEvents() {
 }
 
 // ============================================================
-// ON_VENDOR_SAVED EVENT — registered once, using the App from init()
+// ON_VENDOR_SAVED EVENT
 // ============================================================
 
 async function registerVendorSavedListener(App) {
@@ -959,7 +1149,7 @@ async function registerVendorSavedListener(App) {
                     log('EVENT', `Auto-selected vendor: ${vendor.name}`);
                 }
             } catch (err) {
-                log('ERROR', 'Error fetching vendor after save', err);
+                logError('ERROR', 'Error fetching vendor after save', err);
             }
         }
     });
@@ -969,66 +1159,63 @@ async function registerVendorSavedListener(App) {
 // INITIALISATION
 // ============================================================
 
+async function loadAllocationData() {
+    showLoading('Loading Sales Order...');
+    const salesOrder = normalizeSalesOrder(await fetchSalesOrder());
+    state.salesOrder = salesOrder;
+
+    showLoading('Loading Purchase Orders...');
+    const allPOs = await getAllPurchaseOrders();
+
+    showLoading('Fetching Purchase Order line item details...');
+    const relatedPOs = await getRelatedPurchaseOrdersWithLineItems(allPOs, salesOrder.number);
+
+    showLoading('Calculating available quantities...');
+    const allocations = calculateAllAllocations(salesOrder, relatedPOs);
+    state.lineItems = allocations;
+
+    renderHeader(salesOrder);
+    renderItems(allocations);
+}
+
 async function init() {
     wireEvents();
     try {
         const App = await ZFAPPS.extension.init();
         await ZFAPPS.invoke('RESIZE', { width: '1300px', height: '850px' });
 
-        // Organization context must be loaded before ANY ZFAPPS.request() call —
-        // missing this caused "invalid URL" errors on every API call before.
         showLoading('Loading organization context...');
         await loadOrganizationContext();
 
-        // Pre-load vendor if contact_id is present in URL
         const urlContactId = getUrlParameter('contact_id');
         if (urlContactId) {
             try {
                 const vendor = await fetchVendorById(urlContactId);
                 if (vendor) selectVendor(vendor);
             } catch (err) {
-                log('ERROR', 'Vendor pre-load failed', err);
+                logError('ERROR', 'Vendor pre-load failed', err);
             }
         }
 
-        // Load Sales Order
-        showLoading('Loading Sales Order...');
-        const salesOrder = normalizeSalesOrder(await fetchSalesOrder());
-        state.salesOrder = salesOrder;
-
-        // Load all POs
-        showLoading('Loading Purchase Orders...');
-        const allPOs = await getAllPurchaseOrders();
-
-        // Allocate
-        showLoading('Calculating available quantities...');
-        const relatedPOs = filterRelatedPurchaseOrders(allPOs, salesOrder.number);
-        const allocations = calculateAllAllocations(salesOrder, relatedPOs);
-        state.lineItems = allocations;
-
-        // Render
-        renderHeader(salesOrder);
-        renderItems(allocations);
+        await loadAllocationData();
 
         dom.orderDate.value = todayISO();
         const defaultDelivery = new Date();
         defaultDelivery.setDate(defaultDelivery.getDate() + 7);
         dom.deliveryDate.value = defaultDelivery.toISOString().split('T')[0];
 
-        if (salesOrder.notes) dom.notes.value = salesOrder.notes;
-        if (salesOrder.terms) dom.terms.value = salesOrder.terms;
+        if (state.salesOrder.notes) dom.notes.value = state.salesOrder.notes;
+        if (state.salesOrder.terms) dom.terms.value = state.salesOrder.terms;
 
-        // Register ON_VENDOR_SAVED using the App instance from init() above —
-        // no second ZFAPPS.extension.init() call needed.
         registerVendorSavedListener(App).catch((err) =>
-            log('ERROR', 'Error registering ON_VENDOR_SAVED', err)
+            logError('ERROR', 'Error registering ON_VENDOR_SAVED', err)
         );
 
         hideLoading();
         dom.footerStatus.textContent = 'Ready';
     } catch (err) {
         hideLoading();
-        log('ERROR', 'Init failed', err);
+        logError('ERROR', 'Init failed', err);
         showError(err.message || 'Unable to initialise the widget.', true);
     }
 }
