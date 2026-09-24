@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Convert to Purchase Order</title>
+    <script src="https://static.zohocdn.com/zohofinance/v1.0/zf_sdk.js"></script>
+   <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="app">
+        <!-- ============================================= -->
+        <!-- STICKY HEADER -->
+        <!-- ============================================= -->
+        <div id="header">
+            <div class="header-left">
+                <h1>New Purchase Order</h1>
+                <span class="so-badge" id="header-so-number"></span>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-secondary" id="btn-close" title="Close">✕</button>
+            </div>
+        </div>
+
+        <!-- ============================================= -->
+        <!-- SCROLLABLE BODY -->
+        <!-- ============================================= -->
+        <div id="body">
+            <!-- Validation errors container -->
+            <div id="validation-errors" class="validation-errors" style="display:none;"></div>
+
+            <!-- ========================================= -->
+            <!-- VENDOR & PO DETAILS SECTION -->
+            <!-- ========================================= -->
+            <div class="form-section">
+                <div class="form-section-title">Purchase Order Details</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Vendor <span class="required">*</span></label>
+                        <div class="vendor-combobox" id="vendor-combobox">
+                            <input
+                                type="text"
+                                class="form-control"
+                                id="vendor-search"
+                                placeholder="Search vendor..."
+                                autocomplete="off"
+                            >
+                            <button class="clear-btn" id="vendor-clear" title="Clear">✕</button>
+                            <div class="vendor-dropdown" id="vendor-dropdown"></div>
+                        </div>
+                        <input type="hidden" id="vendor-id">
+                    </div>
+                    <div class="form-group">
+                        <label>Purchase Order #</label>
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="po-number"
+                            placeholder="Auto-generated"
+                            readonly
+                        >
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Order Date</label>
+                        <input type="date" class="form-control" id="order-date">
+                    </div>
+                    <div class="form-group">
+                        <label>Expected Delivery Date</label>
+                        <input type="date" class="form-control" id="delivery-date">
+                    </div>
+                    <div class="form-group">
+                        <label>Reference #</label>
+                        <input type="text" class="form-control" id="reference-number" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label>Sales Order</label>
+                        <input type="text" class="form-control" id="so-number-display" readonly>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========================================= -->
+            <!-- ITEMS SECTION -->
+            <!-- ========================================= -->
+            <div class="form-section">
+                <div class="form-section-title">Items</div>
+                <div class="items-table-wrapper">
+                    <table class="items-table" id="items-table">
+                        <thead>
+                            <tr>
+                                <th style="min-width:180px;">Item</th>
+                                <th style="min-width:200px;">Description</th>
+                                <th style="min-width:140px;">SO Qty / Allocated / Available</th>
+                                <th style="width:80px;">PO Qty</th>
+                                <th style="width:100px;">Rate</th>
+                                <th style="width:80px;">Discount</th>
+                                <th style="width:80px;">Tax %</th>
+                                <th style="width:110px;">Amount</th>
+                                <th style="width:40px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="items-tbody">
+                            <!-- Rows injected by JS -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="add-item-row">
+                    <button class="btn btn-link" id="btn-add-item" disabled title="Additional items not allowed in conversion mode">+ Add New Item</button>
+                </div>
+
+                <!-- TOTALS -->
+                <div class="totals-panel">
+                    <table class="totals-table">
+                        <tr>
+                            <td>Sub Total</td>
+                            <td id="total-subtotal">0.00</td>
+                        </tr>
+                        <tr>
+                            <td>Discount</td>
+                            <td id="total-discount">0.00</td>
+                        </tr>
+                        <tr>
+                            <td>Tax</td>
+                            <td id="total-tax">0.00</td>
+                        </tr>
+                        <tr class="grand-total">
+                            <td>Total</td>
+                            <td id="total-grand">0.00</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ========================================= -->
+            <!-- NOTES & TERMS -->
+            <!-- ========================================= -->
+            <div class="form-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Notes</label>
+                        <textarea class="form-control" id="notes" rows="3" placeholder="Notes..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Terms &amp; Conditions</label>
+                        <textarea class="form-control" id="terms" rows="3" placeholder="Terms &amp; Conditions..."></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================= -->
+        <!-- STICKY FOOTER -->
+        <!-- ============================================= -->
+        <div id="footer">
+            <div class="footer-left">
+                <span id="footer-status"></span>
+            </div>
+            <div class="footer-right">
+                <button class="btn btn-secondary" id="btn-cancel">Cancel</button>
+                <button class="btn btn-secondary" id="btn-save-draft" disabled title="Save Draft is not supported in this flow">Save Draft</button>
+                <button class="btn btn-primary" id="btn-create-po">Create Purchase Order</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- LOADING OVERLAY -->
+    <!-- ============================================= -->
+    <div class="overlay" id="loading-overlay">
+        <div class="spinner"></div>
+        <div class="overlay-message" id="loading-message">Loading Sales Order...</div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- ERROR OVERLAY -->
+    <!-- ============================================= -->
+    <div class="overlay hidden" id="error-overlay">
+        <div class="overlay-message error" id="error-message"></div>
+        <div class="overlay-actions">
+            <button class="btn btn-secondary" id="btn-error-retry">Retry</button>
+            <button class="btn btn-primary" id="btn-error-close">Close</button>
+        </div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- SUCCESS SCREEN (hidden by default) -->
+    <!-- ============================================= -->
+    <div id="success-screen" style="display:none;">
+        <div class="success-screen">
+            <div class="success-icon">✓</div>
+            <h2>Purchase Order Created Successfully</h2>
+            <div class="po-number" id="success-po-number"></div>
+            <div class="po-details" id="success-po-details"></div>
+            <div style="display:flex;gap:8px;">
+                <button class="btn btn-primary" id="btn-success-open">Open Purchase Order</button>
+                <button class="btn btn-secondary" id="btn-success-close">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/extension.js"></script>
+</body>
+</html>
