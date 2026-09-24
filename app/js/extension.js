@@ -11,11 +11,10 @@
 const COUNTED_PO_STATUSES = ['draft', 'open', 'partially_received', 'received', 'billed'];
 const PER_PAGE = 200;
 
-const API_CONFIG = {
-    PO_LIST:     'zbooks_po_list',      // GET  /books/v3/purchaseorders
-    PO_CREATE:   'zbooks_po_create',    // POST /books/v3/purchaseorders
-    VENDOR_LIST: 'zbooks_vendor_list'   // GET  /books/v3/contacts
-};
+// Must exactly match the connectionLinkName generated when you created the
+// connection under Settings -> Developer Space -> Connections, and pasted
+// into plugin-manifest.json -> usedConnections[].connectionLinkName
+const CONNECTION_LINK_NAME = 'bookconnectionwigdet';
 
 // ============================================================
 // GLOBAL STATE
@@ -28,7 +27,9 @@ const state = {
     vendorsLoading: false,
     creatingPurchaseOrder: false,
     dirty: false,
-    createdPoId: null
+    createdPoId: null,
+    apiRootEndPoint: null,   // absolute base URL, e.g. https://www.zohoapis.com/books/v3
+    organizationId: null
 };
 
 // ============================================================
@@ -124,6 +125,34 @@ function getUrlParameter(name) {
     return new URLSearchParams(window.location.search).get(name);
 }
 
+/** Every ZFAPPS.request() call needs organization_id as a query param. */
+function withOrgId(extraParams) {
+    return [
+        { key: 'organization_id', value: String(state.organizationId) },
+        ...(extraParams || [])
+    ];
+}
+
+// ============================================================
+// ORGANIZATION CONTEXT — must load before any ZFAPPS.request() call
+// ============================================================
+
+async function loadOrganizationContext() {
+    const { organization } = await ZFAPPS.get('organization');
+
+    if (!organization || !organization.api_root_endpoint) {
+        throw new Error('Could not resolve organization API endpoint.');
+    }
+
+    state.apiRootEndPoint = organization.api_root_endpoint.replace(/\/+$/, '');
+    state.organizationId = organization.organization_id;
+
+    log('ORG', 'Context loaded', {
+        apiRootEndPoint: state.apiRootEndPoint,
+        organizationId: state.organizationId
+    });
+}
+
 // ============================================================
 // SALES ORDER
 // ============================================================
@@ -140,7 +169,6 @@ async function fetchSalesOrder() {
     }
 
     log('SALES_ORDER', 'Number: ' + so.salesorder_number);
-    log('Sales Order Response: ', JSON.stringify(so,null,2));
     return so;
 }
 
@@ -169,7 +197,7 @@ function normalizeSalesOrder(so) {
 }
 
 // ============================================================
-// PURCHASE ORDER FETCHING
+// PURCHASE ORDER FETCHING — absolute URL + organization_id + connection
 // ============================================================
 
 async function getAllPurchaseOrders() {
@@ -180,21 +208,24 @@ async function getAllPurchaseOrders() {
     while (hasMore) {
         log('PO_FETCH', `Page ${page}`);
         const response = await ZFAPPS.request({
-            url: '/books/v3/purchaseorders',
+            url: `${state.apiRootEndPoint}/purchaseorders`,
             method: 'GET',
-            url_query: [
+            url_query: withOrgId([
                 { key: 'page', value: String(page) },
                 { key: 'per_page', value: String(PER_PAGE) }
-            ],
-            connection_link_name: API_CONFIG.PO_LIST
+            ]),
+            connection_link_name: CONNECTION_LINK_NAME
         });
 
         let data;
-        console.log("PO Response:", response.data.body);
         try {
             data = JSON.parse(response.data.body);
         } catch (e) {
             throw new Error('Failed to parse PO response: ' + e.message);
+        }
+
+        if (data.code !== 0) {
+            throw new Error(data.message || 'Failed to fetch Purchase Orders.');
         }
 
         all = all.concat(data.purchaseorders || []);
@@ -272,34 +303,34 @@ function calculateAllAllocations(salesOrder, relatedPOs) {
 }
 
 // ============================================================
-// VENDOR API
+// VENDOR API — absolute URL, contact_type=vendor, organization_id, connection
 // ============================================================
 
-/**
- * Fetch all vendor-type contacts from Zoho Books.
- */
 async function fetchVendors(searchText) {
-    const params = [
-        { key: 'filter_by', value: 'Vendors' },
+    const params = withOrgId([
+        { key: 'contact_type', value: 'vendor' }, // real Books API param
         { key: 'page', value: '1' },
         { key: 'per_page', value: '200' }
-    ];
+    ]);
     if (searchText) params.push({ key: 'search_text', value: searchText });
 
     log('VENDOR', 'Fetching vendors from API...');
     const response = await ZFAPPS.request({
-        url: '/books/v3/contacts',
+        url: `${state.apiRootEndPoint}/contacts`,
         method: 'GET',
         url_query: params,
-        connection_link_name: API_CONFIG.VENDOR_LIST
+        connection_link_name: CONNECTION_LINK_NAME
     });
 
     let data;
-    console.log("Vendor Response:",response.data.body);
     try {
         data = JSON.parse(response.data.body);
     } catch (e) {
         throw new Error('Failed to parse vendor response: ' + e.message);
+    }
+
+    if (data.code !== 0) {
+        throw new Error(data.message || 'Failed to fetch vendors.');
     }
 
     const vendors = (data.contacts || []).map((v) => ({
@@ -314,17 +345,15 @@ async function fetchVendors(searchText) {
     return vendors;
 }
 
-/**
- * Fetch a single vendor by contact_id.
- */
 async function fetchVendorById(contactId) {
     if (!contactId) return null;
     log('VENDOR', 'Fetching by ID: ' + contactId);
 
     const response = await ZFAPPS.request({
-        url: `/books/v3/contacts/${contactId}`,
+        url: `${state.apiRootEndPoint}/contacts/${contactId}`,
         method: 'GET',
-        connection_link_name: API_CONFIG.VENDOR_LIST
+        url_query: withOrgId(),
+        connection_link_name: CONNECTION_LINK_NAME
     });
 
     let data;
@@ -350,10 +379,6 @@ async function fetchVendorById(contactId) {
 // VENDOR DROPDOWN UI
 // ============================================================
 
-/**
- * Render the vendor dropdown list with the supplied list of vendors.
- * Called every time the input is focused / typed in.
- */
 function renderVendorDropdown(vendors, filterText) {
     const dd = dom.vendorDropdown;
     dd.innerHTML = '';
@@ -391,23 +416,18 @@ function renderVendorDropdown(vendors, filterText) {
     dd.classList.add('open');
 }
 
-/** Show a loading indicator inside the dropdown. */
 function showVendorDropdownLoading() {
     dom.vendorDropdown.innerHTML =
         `<div class="vendor-dropdown-empty">Loading vendors...</div>`;
     dom.vendorDropdown.classList.add('open');
 }
 
-/** Show an error inside the dropdown. */
 function showVendorDropdownError(msg) {
     dom.vendorDropdown.innerHTML =
         `<div class="vendor-dropdown-empty" style="color:#d32f2f;">${escapeHtml(msg)}</div>`;
     dom.vendorDropdown.classList.add('open');
 }
 
-/**
- * Populate the vendor input box and hidden vendor-id field.
- */
 function selectVendor(vendor) {
     dom.vendorId.value = vendor.id;
     dom.vendorSearch.value = vendor.name;
@@ -430,10 +450,6 @@ function clearVendor() {
     markDirty();
 }
 
-/**
- * Fetch vendors from the API and show them in the dropdown.
- * Called on focus and on input.
- */
 async function openVendorDropdown() {
     if (state.vendorsLoading) return;
     state.vendorsLoading = true;
@@ -751,10 +767,11 @@ function buildPurchaseOrderPayload(formData) {
 async function createPurchaseOrder(payload) {
     log('CREATE_PO', 'Submitting...');
     const response = await ZFAPPS.request({
-        url: '/books/v3/purchaseorders',
+        url: `${state.apiRootEndPoint}/purchaseorders`,
         method: 'POST',
+        url_query: withOrgId(),
         body: { mode: 'raw', raw: JSON.stringify(payload) },
-        connection_link_name: API_CONFIG.PO_CREATE
+        connection_link_name: CONNECTION_LINK_NAME
     });
 
     let data;
@@ -802,8 +819,7 @@ async function handleCreatePurchaseOrder() {
         const freshAllocations = calculateAllAllocations(normalizedSO, relatedPOs);
 
         hideLoading();
-console.log("Fresh SO:", JSON.stringify(freshSO, null, 2));
-console.log("Normalized SO:", JSON.stringify(normalizedSO, null, 2));
+
         const errors = validateBeforeCreate(formData, freshAllocations);
         if (errors.length > 0) {
             showValidationErrors(errors);
@@ -880,18 +896,10 @@ function confirmDiscard() {
 
 function wireEvents() {
 
-    // --------------------------------------------------------
-    // VENDOR INPUT — Fetch vendors from API on click/focus
-    // --------------------------------------------------------
-
-    // When the user clicks/focuses the vendor input, fetch the latest
-    // vendor list from the API and display it in the dropdown.
     dom.vendorSearch.addEventListener('focus', async () => {
         await openVendorDropdown();
     });
 
-    // When the user types, re-filter the already loaded list.
-    // If the list is empty (e.g., API failed on focus), try again.
     dom.vendorSearch.addEventListener('input', async () => {
         if (state.vendors.length === 0 && !state.vendorsLoading) {
             await openVendorDropdown();
@@ -900,25 +908,17 @@ function wireEvents() {
         }
     });
 
-    // Close the dropdown when focus leaves the input
     dom.vendorSearch.addEventListener('blur', () => {
         setTimeout(() => dom.vendorDropdown.classList.remove('open'), 200);
     });
 
-    // Clear the selected vendor
     dom.vendorClear.addEventListener('click', clearVendor);
 
-    // --------------------------------------------------------
-    // Other form inputs
-    // --------------------------------------------------------
     dom.orderDate.addEventListener('change', markDirty);
     dom.deliveryDate.addEventListener('change', markDirty);
     dom.notes.addEventListener('input', markDirty);
     dom.terms.addEventListener('input', markDirty);
 
-    // --------------------------------------------------------
-    // Action buttons
-    // --------------------------------------------------------
     dom.btnCreatePo.addEventListener('click', handleCreatePurchaseOrder);
     dom.btnCancel.addEventListener('click', confirmDiscard);
     dom.btnClose.addEventListener('click', confirmDiscard);
@@ -943,14 +943,42 @@ function wireEvents() {
 }
 
 // ============================================================
+// ON_VENDOR_SAVED EVENT — registered once, using the App from init()
+// ============================================================
+
+async function registerVendorSavedListener(App) {
+    App.instance.on('ON_VENDOR_SAVED', async function (data) {
+        const recordId = data && data.record_id;
+        log('EVENT', 'Saved vendor record ID: ' + recordId);
+
+        if (recordId) {
+            try {
+                const vendor = await fetchVendorById(recordId);
+                if (vendor) {
+                    selectVendor(vendor);
+                    log('EVENT', `Auto-selected vendor: ${vendor.name}`);
+                }
+            } catch (err) {
+                log('ERROR', 'Error fetching vendor after save', err);
+            }
+        }
+    });
+}
+
+// ============================================================
 // INITIALISATION
 // ============================================================
 
 async function init() {
     wireEvents();
     try {
-        await ZFAPPS.extension.init();
+        const App = await ZFAPPS.extension.init();
         await ZFAPPS.invoke('RESIZE', { width: '1300px', height: '850px' });
+
+        // Organization context must be loaded before ANY ZFAPPS.request() call —
+        // missing this caused "invalid URL" errors on every API call before.
+        showLoading('Loading organization context...');
+        await loadOrganizationContext();
 
         // Pre-load vendor if contact_id is present in URL
         const urlContactId = getUrlParameter('contact_id');
@@ -990,27 +1018,11 @@ async function init() {
         if (salesOrder.notes) dom.notes.value = salesOrder.notes;
         if (salesOrder.terms) dom.terms.value = salesOrder.terms;
 
-        // Register ON_VENDOR_SAVED event handler
-        ZFAPPS.extension.init().then(function(App) {
-            App.instance.on('ON_VENDOR_SAVED', async function(data) {
-                const recordId = data && data.record_id;
-                console.log('Saved vendor record ID:', recordId);
-
-                if (recordId) {
-                    try {
-                        const vendor = await fetchVendorById(recordId);
-                        if (vendor) {
-                            selectVendor(vendor);
-                            log('EVENT', `Auto-selected vendor: ${vendor.name}`);
-                        }
-                    } catch (err) {
-                        console.error('Error fetching vendor after save:', err);
-                    }
-                }
-            }).catch(function(err) {
-                console.error('Error registering ON_VENDOR_SAVED:', err);
-            });
-        });
+        // Register ON_VENDOR_SAVED using the App instance from init() above —
+        // no second ZFAPPS.extension.init() call needed.
+        registerVendorSavedListener(App).catch((err) =>
+            log('ERROR', 'Error registering ON_VENDOR_SAVED', err)
+        );
 
         hideLoading();
         dom.footerStatus.textContent = 'Ready';

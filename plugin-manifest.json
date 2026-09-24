@@ -16,5 +16,19 @@
     ]
   },
   "config": [],
-  "usedConnections": []
+  "usedConnections": [
+    {
+      "connectionLinkName": "books_conn",
+      "connectionName": "Books Self Connection",
+      "serviceName": "zohobooks",
+      "UserDefinedService": false,
+      "scope": [
+        "ZohoBooks.salesorders.READ",
+        "ZohoBooks.purchaseorders.READ",
+        "ZohoBooks.purchaseorders.CREATE",
+        "ZohoBooks.contacts.READ",
+        "ZohoBooks.settings.READ"
+      ]
+    }
+  ]
 }
