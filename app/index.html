@@ -1,105 +1,194 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- <meta name="viewport" content="width=device-width, initial-scale=1.0"> -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <title>Convert to Purchase Order</title>
     <script src="https://static.zohocdn.com/zohofinance/v1.0/zf_sdk.js"></script>
-   <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
 
     <div id="app">
-        <!-- ============================================= -->
-        <!-- STICKY HEADER -->
-        <!-- ============================================= -->
+        <!-- ============ HEADER ============ -->
         <div id="header">
             <div class="header-left">
                 <h1>New Purchase Order</h1>
                 <span class="so-badge" id="header-so-number"></span>
             </div>
             <div class="header-actions">
-                <button class="btn btn-secondary" id="btn-close" title="Close">✕</button>
+                <button class="btn btn-icon" id="btn-close" title="Close">✕</button>
             </div>
         </div>
 
-        <!-- ============================================= -->
-        <!-- SCROLLABLE BODY -->
-        <!-- ============================================= -->
+        <!-- ============ BODY ============ -->
         <div id="body">
-            <!-- Validation errors container -->
             <div id="validation-errors" class="validation-errors" style="display:none;"></div>
 
-            <!-- ========================================= -->
-            <!-- VENDOR & PO DETAILS SECTION -->
-            <!-- ========================================= -->
-            <div class="form-section">
-                <div class="form-section-title">Purchase Order Details</div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Vendor <span class="required">*</span></label>
-                        <div class="vendor-combobox" id="vendor-combobox">
-                            <input
-                                type="text"
-                                class="form-control"
-                                id="vendor-search"
-                                placeholder="Search vendor..."
-                                autocomplete="off"
-                            >
-                            <button class="clear-btn" id="vendor-clear" title="Clear">✕</button>
-                            <div class="vendor-dropdown" id="vendor-dropdown"></div>
+            <!-- ===== Grey top block: Vendor + Location ===== -->
+            <!-- ===== Grey top block: Vendor + Location ===== -->
+            <div class="po-top">
+                <div class="po-row">
+                    <label class="po-label req">Vendor Name*</label>
+                    <div class="po-field">
+                        <div class="vendor-wrap">
+                            <div class="vendor-combobox" id="vendor-combobox">
+                                <input type="text" class="form-control" id="vendor-search" readonly
+                                    placeholder="Select a Vendor" autocomplete="off">
+                                <button type="button" class="clear-btn" id="vendor-clear" title="Clear">✕</button>
+
+                                <div class="vendor-dropdown vp-panel" id="vendor-dropdown">
+                                    <div class="vp-search">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8a94a6"
+                                            stroke-width="2.2" stroke-linecap="round">
+                                            <circle cx="11" cy="11" r="7" />
+                                            <path d="M20 20l-3.5-3.5" />
+                                        </svg>
+                                        <input type="text" id="vp-search-input" placeholder="Search" autocomplete="off">
+                                    </div>
+                                    <div class="vp-list" id="vp-list" role="listbox"></div>
+                                    <div class="vp-foot">
+                                        <button type="button" class="vp-new" id="vp-new"><span
+                                                class="vp-plus">+</span><span>New Vendor</span></button>
+                                        <button type="button" class="vp-refresh" id="vp-refresh"
+                                            title="Reload vendors from Zoho Books">&#8635; Refresh</button>
+                                    </div>
+                                </div>
+                            </div>
+
+
+                            <button type="button" class="vendor-go" id="vendor-go" title="Advanced Vendor Search"
+                                aria-label="Advanced Vendor Search">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff"
+                                    stroke-width="2.2" stroke-linecap="round">
+                                    <circle cx="11" cy="11" r="7" />
+                                    <path d="M20 20l-3.5-3.5" />
+                                </svg>
+                            </button>
                         </div>
+
+                        <div class="va-block" id="va-block" hidden></div>
                         <input type="hidden" id="vendor-id">
                     </div>
-                    <div class="form-group">
-                        <label>Purchase Order #</label>
-                        <input
-                            type="text"
-                            class="form-control"
-                            id="po-number"
-                            placeholder="Auto-generated"
-                            readonly
-                        >
-                    </div>
                 </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Order Date</label>
-                        <input type="date" class="form-control" id="order-date">
-                    </div>
-                    <div class="form-group">
-                        <label>Expected Delivery Date</label>
-                        <input type="date" class="form-control" id="delivery-date">
-                    </div>
-                    <div class="form-group">
-                        <label>Reference #</label>
-                        <input type="text" class="form-control" id="reference-number" readonly>
-                    </div>
-                    <div class="form-group">
-                        <label>Sales Order</label>
-                        <input type="text" class="form-control" id="so-number-display" readonly>
+
+                <div class="po-row">
+                    <label class="po-label" for="po-location">Location</label>
+                    <div class="po-field">
+                        <select class="form-control po-w" id="po-location"></select>
                     </div>
                 </div>
             </div>
 
+            <!-- ===== Delivery address ===== -->
+            <div class="po-row">
+                <label class="po-label req">Delivery Address*</label>
+                <div class="po-field">
+                    <div class="po-radios">
+                        <label class="po-radio"><input type="radio" name="deliver_to" value="location" checked>
+                            Locations</label>
+                        <label class="po-radio"><input type="radio" name="deliver_to" value="customer"> Customer</label>
+                    </div>
+                    <select class="form-control po-w" id="delivery-target"></select>
+
+                    <div class="addr-card po-w" id="delivery-addr-name"></div>
+                    <div class="addr-lines" id="delivery-addr-lines"></div>
+                    <button type="button" class="linkbtn" id="btn-change-dest">Change destination to deliver</button>
+                </div>
+            </div>
+
+            <!-- ===== Reference / dates ===== -->
+            <!-- PO number intentionally not shown (Zoho auto-numbers it) -->
+            <div class="po-row">
+                <label class="po-label" for="reference-number">Reference#</label>
+                <div class="po-field">
+                    <input type="text" class="form-control po-w" id="reference-number" readonly>
+                    <!-- kept hidden: renderHeader() writes to this element -->
+                    <input type="hidden" id="so-number-display">
+                </div>
+            </div>
+
+            <div class="po-row">
+                <label class="po-label" for="order-date">Date</label>
+                <div class="po-field">
+                    <input type="date" class="form-control po-w" id="order-date">
+                </div>
+            </div>
+
+            <div class="po-row po-row-2">
+                <label class="po-label" for="delivery-date">Delivery Date</label>
+                <div class="po-field">
+                    <input type="date" class="form-control po-w" id="delivery-date">
+                </div>
+                <label class="po-label" for="pay-terms">Payment Terms</label>
+                <div class="po-field">
+                    <select class="form-control po-w" id="pay-terms"></select>
+                </div>
+            </div>
+
+            <div class="po-row">
+                <label class="po-label" for="delivery-method">Shipment Preference</label>
+                <div class="po-field">
+                    <div class="sh-wrap po-w">
+                        <input type="text" class="form-control" id="delivery-method" placeholder="Delivery Method"
+                            maxlength="100" autocomplete="off">
+                        <span class="sh-chev"></span>
+                    </div>
+                    <label class="po-check"><input type="checkbox" id="reverse-charge"> This transaction is applicable
+                        for reverse charge</label>
+                </div>
+            </div>
+
             <!-- ========================================= -->
-            <!-- ITEMS SECTION -->
+            <!-- ITEMS SECTION (ZOHO BOOKS NATIVE LAYOUT) -->
             <!-- ========================================= -->
-            <div class="form-section">
-                <div class="form-section-title">Items</div>
+            <div class="form-section zb" id="items-form-section" style="margin-top:20px;">
+                <!-- Header with Item Table and Bulk Actions -->
+                <div class="table-title-bar">
+                    <div class="form-section-title">Item Table</div>
+                    <button type="button" class="bulk-actions-link" id="btn-bulk-actions"
+                        title="Bulk actions for line items">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <path d="m9 12 2 2 4-4" />
+                        </svg>
+                        <span>Bulk Actions</span>
+                    </button>
+                </div>
+
                 <div class="items-table-wrapper">
-                    <table class="items-table" id="items-table">
+                    <table class="items-table zb-items" id="items-table">
+                        <colgroup>
+                            <col style="width: 32px;">
+                            <col style="width: 30%;">
+                            <col style="width: 14%;">
+                            <col style="width: 12%;">
+                            <col style="width: 12%;">
+                            <col class="col-disc" style="width: 10%;">
+                            <col style="width: 11%;">
+                            <col style="width: 11%;">
+                        </colgroup>
                         <thead>
                             <tr>
-                                <th style="min-width:180px;">Item</th>
-                                <th style="min-width:200px;">Description</th>
-                                <th style="min-width:140px;">SO Qty / Allocated / Available</th>
-                                <th style="width:80px;">PO Qty</th>
-                                <th style="width:100px;">Rate</th>
-                                <th style="width:80px;">Discount</th>
-                                <th style="width:80px;">Tax %</th>
-                                <th style="width:110px;">Amount</th>
-                                <th style="width:40px;"></th>
+                                <th class="c-drag"></th>
+                                <th>Item Details</th>
+                                <th>Account</th>
+                                <th class="r">Quantity</th>
+                                <th class="r">Rate <span class="rate-calc-icon" title="Price Calculator / Grid"><svg
+                                            width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                            stroke-width="2">
+                                            <rect x="3" y="3" width="18" height="18" rx="2" />
+                                            <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
+                                        </svg></span></th>
+                                <th class="r col-disc">Discount</th>
+                                <th>Tax</th>
+                                <th class="r">Amount</th>
                             </tr>
                         </thead>
                         <tbody id="items-tbody">
@@ -107,76 +196,158 @@
                         </tbody>
                     </table>
                 </div>
-                <div class="add-item-row">
-                    <button class="btn btn-link" id="btn-add-item" disabled title="Additional items not allowed in conversion mode">+ Add New Item</button>
-                </div>
 
-                <!-- TOTALS -->
-                <div class="totals-panel">
-                    <table class="totals-table">
-                        <tr>
-                            <td>Sub Total</td>
-                            <td id="total-subtotal">0.00</td>
-                        </tr>
-                        <tr>
-                            <td>Discount</td>
-                            <td id="total-discount">0.00</td>
-                        </tr>
-                        <tr>
-                            <td>Tax</td>
-                            <td id="total-tax">0.00</td>
-                        </tr>
-                        <tr class="grand-total">
-                            <td>Total</td>
-                            <td id="total-grand">0.00</td>
-                        </tr>
-                    </table>
+                <!-- Table Bottom Action Buttons -->
+                <div class="table-foot-actions">
+                    <div class="btn-split">
+                        <button type="button" class="btn btn-outline" id="btn-add-item"><span class="plus">+</span> Add
+                            New Row</button>
+                        <button type="button" class="btn btn-outline btn-arrow" id="btn-add-item-menu"
+                            title="More row options">▾</button>
+                    </div>
+                    <button type="button" class="btn btn-outline" id="btn-add-bulk"><span class="plus">+</span> Add
+                        Items in Bulk</button>
                 </div>
             </div>
 
             <!-- ========================================= -->
-            <!-- NOTES & TERMS -->
+            <!-- BOTTOM 2-COLUMN GRID (NOTES & TOTALS) -->
             <!-- ========================================= -->
-            <div class="form-section">
-                <div class="form-row">
+            <div class="po-bottom-grid">
+                <div class="po-bottom-left">
                     <div class="form-group">
-                        <label>Notes</label>
-                        <textarea class="form-control" id="notes" rows="3" placeholder="Notes..."></textarea>
+                        <label class="field-title" for="notes">Notes</label>
+                        <textarea class="form-control" id="notes" rows="3"
+                            placeholder="Will be displayed on purchase order"></textarea>
                     </div>
-                    <div class="form-group">
-                        <label>Terms &amp; Conditions</label>
-                        <textarea class="form-control" id="terms" rows="3" placeholder="Terms &amp; Conditions..."></textarea>
+                </div>
+            
+                <div class="po-bottom-right">
+                    <div class="zb-totals-card">
+                        <!-- Sub Total -->
+                        <div class="tot-row" id="tot-subtotal-row">
+                            <div class="tot-lbl">
+                                <span class="tot-main">Sub Total</span>
+                                <span class="tot-sub" id="tot-qty-label" style="display:none;"></span>
+                                <span class="tot-sub" id="tot-tax-inclusive-label" style="display:none;"></span>
+                            </div>
+                            <div class="tot-val" id="total-subtotal">0.00</div>
+                        </div>
+
+                        <!-- Discount -->
+                        <div class="tot-row" id="tx-disc-row">
+                            <div class="tot-lbl">
+                                <span class="tot-main">Discount</span>
+                                <button type="button" class="tot-link" id="tx-disc-timing">Apply after tax</button>
+                            </div>
+                            <div class="tot-ctrl">
+                                <div class="tot-disc-wrap">
+                                    <input type="number" id="tx-disc" value="0" min="0" step="any" autocomplete="off">
+                                    <select id="tx-disc-unit">
+                                        <option value="pct">%</option>
+                                        <option value="amt">₹</option>
+                                    </select>
+                                </div>
+                                <div class="tot-val" id="total-discount">0.00</div>
+                            </div>
+                        </div>
+
+                        <!-- antigravity update with dynamic line-item tax breakdown -->
+                        <!-- Dynamic Tax Breakdown Rows -->
+                        <div id="tot-tax-breakdown-container"></div>
+
+                        <!-- Total Tax Amount Row -->
+                        <div class="tot-row" id="tot-tax-total-row" style="display:none;">
+                            <div class="tot-lbl">
+                                <span class="tot-main">Total Tax Amount</span>
+                            </div>
+                            <div class="tot-ctrl">
+                                <input type="text" id="tot-tax-amount-val" class="tot-tax-amt-input" readonly value="0.00">
+                                <span class="tot-tax-link-icon" title="Auto-calculated tax amount">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                                    </svg>
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- TDS / TCS -->
+                        <div class="tot-row" id="tot-tds-row">
+                            <div class="tot-lbl">
+                                <div class="tot-radios">
+                                    <label class="tot-radio-lbl">
+                                        <input type="radio" name="tds_tcs" value="tds" checked> TDS
+                                    </label>
+                                    <label class="tot-radio-lbl">
+                                        <input type="radio" name="tds_tcs" value="tcs"> TCS
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="tot-ctrl">
+                                <select id="tot-tds-select" class="tot-tax-select">
+                                    <option value="">Select a Tax</option>
+                                </select>
+                                <div class="tot-val" id="total-tds">- 0.00</div>
+                            </div>
+                        </div>
+
+                        <!-- Adjustment -->
+                        <div class="tot-row" id="tot-adj-row">
+                            <div class="tot-lbl">
+                                <button type="button" class="tot-adj-box" id="tot-adj-box">Adjustment</button>
+                            </div>
+                            <div class="tot-ctrl">
+                                <input type="number" id="tot-adj-val" class="tot-adj-input" placeholder="0.00" step="any" autocomplete="off">
+                                <span class="tot-help" title="Add any extra charges or round off amounts">&#9432;</span>
+                                <div class="tot-val" id="total-adjustment">0.00</div>
+                            </div>
+                        </div>
+
+                        <!-- Grand Total -->
+                        <div class="tot-row grand-total" id="tot-grand-row">
+                            <div class="tot-lbl">
+                                <span class="tot-grand-lbl" id="tot-currency-lbl">Total</span>
+                            </div>
+                            <div class="tot-val grand-val" id="total-grand">0.00</div>
+                        </div>
+
+                        <!-- Hidden span for tax accounting calculation -->
+                        <span id="total-tax" style="display:none;">0.00</span>
                     </div>
+                </div>
+            </div>
+            
+            <div class="po-terms-band">
+                <div class="form-group">
+                    <label class="field-title" for="terms">Terms &amp; Conditions</label>
+                    <textarea class="form-control" id="terms" rows="4"
+                        placeholder="Enter the terms and conditions of your business to be displayed in your transaction"></textarea>
                 </div>
             </div>
         </div>
 
-        <!-- ============================================= -->
-        <!-- STICKY FOOTER -->
-        <!-- ============================================= -->
+        <!-- ============ FOOTER ============ -->
         <div id="footer">
             <div class="footer-left">
-                <span id="footer-status"></span>
+                <button class="btn btn-primary" id="btn-create-po">Create Purchase Order</button>
+                <!-- <button class="btn btn-secondary" id="btn-save-draft" disabled
+                    title="Save Draft is not supported in this flow">Save as Draft</button> -->
+                <button class="btn btn-secondary" id="btn-cancel">Cancel</button>
             </div>
             <div class="footer-right">
-                <button class="btn btn-secondary" id="btn-cancel">Cancel</button>
-                <button class="btn btn-secondary" id="btn-save-draft" disabled title="Save Draft is not supported in this flow">Save Draft</button>
-                <button class="btn btn-primary" id="btn-create-po">Create Purchase Order</button>
+                <span id="footer-status"></span>
             </div>
         </div>
     </div>
 
-    <!-- ============================================= -->
-    <!-- LOADING OVERLAY -->
-    <!-- ============================================= -->
+    <!-- ============ LOADING OVERLAY ============ -->
     <div class="overlay" id="loading-overlay">
         <div class="spinner"></div>
         <div class="overlay-message" id="loading-message">Loading Sales Order...</div>
     </div>
 
-    <!-- ============================================= -->
-    <!-- ERROR OVERLAY -->
-    <!-- ============================================= -->
+    <!-- ============ ERROR OVERLAY ============ -->
     <div class="overlay hidden" id="error-overlay">
         <div class="overlay-message error" id="error-message"></div>
         <div class="overlay-actions">
@@ -185,9 +356,7 @@
         </div>
     </div>
 
-    <!-- ============================================= -->
-    <!-- SUCCESS SCREEN (kept for backward compat, hidden) -->
-    <!-- ============================================= -->
+    <!-- ============ SUCCESS SCREEN ============ -->
     <div id="success-screen" style="display:none;">
         <div class="success-screen">
             <div class="success-icon">✓</div>
@@ -201,6 +370,467 @@
         </div>
     </div>
 
+    <!-- ========== New Vendor modal (antigravity update with Complete New Vendor Form) ========== -->
+    <div id="nv-modal" class="nv-overlay" hidden>
+        <div class="nv-box" role="dialog" aria-modal="true" aria-labelledby="nv-title">
+            <div class="nv-head">
+                <h3 id="nv-title">New Vendor</h3>
+                <button type="button" class="nv-x" id="nv-close" aria-label="Close">&times;</button>
+            </div>
+
+            <div class="nv-body">
+                <!-- Vendor Type -->
+                <div class="nv-row">
+                    <label class="nv-l">Vendor Type</label>
+                    <div class="nv-c">
+                        <div class="nv-line">
+                            <label class="nv-radio"><input type="radio" name="nv_type" value="business" checked>
+                                Business</label>
+                            <label class="nv-radio"><input type="radio" name="nv_type" value="individual">
+                                Individual</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Primary Contact -->
+                <div class="nv-row">
+                    <label class="nv-l">Primary Contact</label>
+                    <div class="nv-c">
+                        <div class="nv-line">
+                            <select id="nv_salutation" class="nv-sm">
+                                <option value="">Salutation</option>
+                                <option>Mr.</option>
+                                <option>Mrs.</option>
+                                <option>Ms.</option>
+                                <option>Miss.</option>
+                                <option>Dr.</option>
+                            </select>
+                            <input type="text" id="nv_firstName" placeholder="First Name" class="nv-md">
+                            <input type="text" id="nv_lastName" placeholder="Last Name" class="nv-md">
+                        </div>
+                        <div class="nv-hint">Last Name is mandatory to sync this contact with Zoho CRM.</div>
+                    </div>
+                </div>
+
+                <!-- Company Name -->
+                <div class="nv-row">
+                    <label class="nv-l" for="nv_companyName">Company Name</label>
+                    <div class="nv-c"><input type="text" id="nv_companyName" class="nv-main"></div>
+                </div>
+
+                <!-- Display Name -->
+                <div class="nv-row">
+                    <label class="nv-l req" for="nv_displayName">Display Name*</label>
+                    <div class="nv-c">
+                        <input type="text" id="nv_displayName" class="nv-main" list="nv-display-list"
+                            placeholder="Select or type to add" autocomplete="off">
+                        <datalist id="nv-display-list"></datalist>
+                    </div>
+                </div>
+
+                <!-- Email Address -->
+                <div class="nv-row">
+                    <label class="nv-l" for="nv_email">Email Address</label>
+                    <div class="nv-c"><input type="text" id="nv_email" class="nv-main" inputmode="email" autocomplete="off"></div>
+                </div>
+
+                <!-- Phone -->
+                <div class="nv-row">
+                    <label class="nv-l">Phone</label>
+                    <div class="nv-c">
+                        <div class="nv-line">
+                            <select id="nv_workCode" class="nv-code"></select>
+                            <input type="text" id="nv_workPhone" placeholder="Work Phone" class="nv-ph" inputmode="tel">
+                            <select id="nv_mobCode" class="nv-code"></select>
+                            <input type="text" id="nv_mobile" placeholder="Mobile" class="nv-ph" inputmode="tel">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Vendor Language -->
+                <div class="nv-row">
+                    <label class="nv-l" for="nv_language">Vendor Language</label>
+                    <div class="nv-c"><select id="nv_language" class="nv-main"></select></div>
+                </div>
+
+                <!-- Tabs -->
+                <div class="nv-tabs" role="tablist">
+                    <button type="button" class="nv-tab active" data-pane="other">Other Details</button>
+                    <button type="button" class="nv-tab" data-pane="address">Address</button>
+                    <button type="button" class="nv-tab" data-pane="bank">Bank Details</button>
+                    <button type="button" class="nv-tab" data-pane="remarks">Remarks</button>
+                </div>
+
+                <!-- Tab 1: Other Details -->
+                <div class="nv-pane" data-pane="other">
+                    <div class="nv-row nv-gst-only">
+                        <label class="nv-l req" for="nv_gst">GST Treatment*</label>
+                        <div class="nv-c"><select id="nv_gst" class="nv-main"></select></div>
+                    </div>
+                    <div class="nv-row nv-gst-only" id="nv-gstin-row" hidden>
+                        <label class="nv-l req" for="nv_gstin" id="nv-gstin-lbl">GSTIN / UIN*</label>
+                        <div class="nv-c"><input type="text" id="nv_gstin" class="nv-main" maxlength="15"
+                                autocomplete="off"></div>
+                    </div>
+                    <div class="nv-row nv-gst-only" id="nv-legal-row" hidden>
+                        <label class="nv-l" for="nv_legalName">Business Legal Name</label>
+                        <div class="nv-c"><input type="text" id="nv_legalName" class="nv-main" maxlength="200"></div>
+                    </div>
+                    <div class="nv-row nv-gst-only" id="nv-trade-row" hidden>
+                        <label class="nv-l" for="nv_tradeName">Business Trade Name</label>
+                        <div class="nv-c"><input type="text" id="nv_tradeName" class="nv-main" maxlength="200"></div>
+                    </div>
+                    <div class="nv-row nv-gst-only" id="nv-pos-row">
+                        <label class="nv-l req" for="nv_pos">Source of Supply*</label>
+                        <div class="nv-c"><select id="nv_pos" class="nv-main"></select></div>
+                    </div>
+                    <div class="nv-row nv-gst-only">
+                        <label class="nv-l" for="nv_pan">PAN</label>
+                        <div class="nv-c"><input type="text" id="nv_pan" class="nv-main" maxlength="10"
+                                autocomplete="off"></div>
+                    </div>
+
+                    <!-- Tax Preference -->
+                    <div class="nv-row">
+                        <label class="nv-l req">Tax Preference*</label>
+                        <div class="nv-c">
+                            <div class="nv-line">
+                                <label class="nv-radio"><input type="radio" name="nv_tax" value="taxable" checked> Taxable</label>
+                                <label class="nv-radio"><input type="radio" name="nv_tax" value="exempt"> Tax Exempt</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="nv-row" id="nv-exempt-row" hidden>
+                        <label class="nv-l req" for="nv_exemption">Exemption Reason*</label>
+                        <div class="nv-c">
+                            <input type="text" id="nv_exemption" class="nv-main" maxlength="200" autocomplete="off" placeholder="Enter the exemption reason">
+                        </div>
+                    </div>
+
+                    <div class="nv-row">
+                        <label class="nv-l">MSME Registered?</label>
+                        <div class="nv-c"><label class="nv-radio"><input type="checkbox" id="nv_msme"> This vendor is
+                                MSME registered</label></div>
+                    </div>
+                    <div class="nv-row">
+                        <label class="nv-l" for="nv_currency">Currency</label>
+                        <div class="nv-c"><select id="nv_currency" class="nv-main"></select></div>
+                    </div>
+                    <div class="nv-row">
+                        <label class="nv-l" for="nv_ap">Accounts Payable</label>
+                        <div class="nv-c"><select id="nv_ap" class="nv-main"></select></div>
+                    </div>
+                    <div class="nv-row">
+                        <label class="nv-l">Opening Balance</label>
+                        <div class="nv-c">
+                            <div class="nv-addon"><span id="nv_obCur" class="nv-addon-t">INR</span><input type="text"
+                                    id="nv_obAmt" inputmode="decimal"></div>
+                        </div>
+                    </div>
+                    <div class="nv-row">
+                        <label class="nv-l" for="nv_terms">Payment Terms</label>
+                        <div class="nv-c"><select id="nv_terms" class="nv-main"></select></div>
+                    </div>
+                    <div class="nv-row">
+                        <label class="nv-l" for="nv_tds">TDS</label>
+                        <div class="nv-c"><select id="nv_tds" class="nv-main"></select></div>
+                    </div>
+                    <div class="nv-row">
+                        <label class="nv-l" for="nv_pb">Price List</label>
+                        <div class="nv-c"><select id="nv_pb" class="nv-main"></select></div>
+                    </div>
+                    <div class="nv-row">
+                        <label class="nv-l">Enable Portal?</label>
+                        <div class="nv-c"><label class="nv-radio"><input type="checkbox" id="nv_portal"> Allow portal
+                                access for this vendor</label></div>
+                    </div>
+
+                    <!-- Documents upload -->
+                    <div class="nv-row">
+                        <label class="nv-l">Documents</label>
+                        <div class="nv-c">
+                            <input type="file" id="nv_files" multiple hidden accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.csv,.txt">
+                            <button type="button" class="btn btn-secondary btn-sm" id="nvFileBtn">⤒ Upload File</button>
+                            <div class="nv-hint">You can upload a maximum of 10 files, 10MB each</div>
+                            <ul class="nv-files" id="nvFileList"></ul>
+                        </div>
+                    </div>
+
+                    <div class="nv-more-link"><button type="button" id="nv-more-link" class="nv-link">Add more
+                            details</button></div>
+                    <div id="nv-more" hidden>
+                        <div class="nv-row"><label class="nv-l" for="nv_website">Website URL</label>
+                            <div class="nv-c"><input type="text" id="nv_website" class="nv-main" placeholder="https://example.com"></div>
+                        </div>
+                        <div class="nv-row"><label class="nv-l" for="nv_dept">Department</label>
+                            <div class="nv-c"><input type="text" id="nv_dept" class="nv-main"></div>
+                        </div>
+                        <div class="nv-row"><label class="nv-l" for="nv_desig">Designation</label>
+                            <div class="nv-c"><input type="text" id="nv_desig" class="nv-main"></div>
+                        </div>
+                        <div class="nv-row"><label class="nv-l" for="nv_twitter">X (Twitter)</label>
+                            <div class="nv-c"><input type="text" id="nv_twitter" class="nv-main"></div>
+                        </div>
+                        <div class="nv-row"><label class="nv-l" for="nv_skype">Skype Name/Number</label>
+                            <div class="nv-c"><input type="text" id="nv_skype" class="nv-main"></div>
+                        </div>
+                        <div class="nv-row"><label class="nv-l" for="nv_facebook">Facebook</label>
+                            <div class="nv-c"><input type="text" id="nv_facebook" class="nv-main"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 2: Address -->
+                <div class="nv-pane" data-pane="address" hidden>
+                    <div class="nv-addr">
+                        <div>
+                            <h4>Billing Address</h4>
+                            <div id="nv-billing" class="nv-addr-grid"></div>
+                        </div>
+                        <div>
+                            <h4>Shipping Address <button type="button" id="nv-copy" class="nv-link">&#8595; Copy billing
+                                    address</button></h4>
+                            <div id="nv-shipping" class="nv-addr-grid"></div>
+                        </div>
+                    </div>
+                    <div class="nv-note">
+                        <b>Note:</b>
+                        <ul>
+                            <li>Add and manage additional addresses from this Customers and Vendors details section.</li>
+                            <li>You can customise how vendors' addresses are displayed in transaction PDFs. To do this, go to Settings &gt; Preferences &gt; Customers and Vendors, and navigate to the Address Format sections.</li>
+                        </ul>
+                    </div>
+                    <datalist id="nv-states"></datalist>
+                </div>
+
+                <!-- Tab 3: Bank Details -->
+                <div class="nv-pane" data-pane="bank" hidden>
+                    <div class="nv-bank-fields">
+                        <div class="nv-row">
+                            <label class="nv-l" for="nv_bank_holder">Account Holder Name</label>
+                            <div class="nv-c">
+                                <input type="text" id="nv_bank_holder" class="nv-main" autocomplete="off">
+                            </div>
+                        </div>
+
+                        <div class="nv-row">
+                            <label class="nv-l" for="nv_bank_name">Bank Name</label>
+                            <div class="nv-c">
+                                <input type="text" id="nv_bank_name" class="nv-main" autocomplete="off">
+                            </div>
+                        </div>
+
+                        <div class="nv-row">
+                            <label class="nv-l req" for="nv_bank_acc">Account Number*</label>
+                            <div class="nv-c">
+                                <div class="nv-pwd-wrap nv-main">
+                                    <input type="password" id="nv_bank_acc" class="nv-pwd-input" autocomplete="off">
+                                    <button type="button" class="nv-eye-btn" id="nv_bank_acc_eye" title="Toggle visibility" tabindex="-1">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                            <circle cx="12" cy="12" r="3"></circle>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="nv-row">
+                            <label class="nv-l req" for="nv_bank_acc_re">Re-enter Account Number*</label>
+                            <div class="nv-c">
+                                <input type="password" id="nv_bank_acc_re" class="nv-main" autocomplete="off">
+                            </div>
+                        </div>
+
+                        <div class="nv-row">
+                            <label class="nv-l req" for="nv_bank_ifsc">IFSC*</label>
+                            <div class="nv-c">
+                                <input type="text" id="nv_bank_ifsc" class="nv-main" maxlength="11" autocomplete="off" style="text-transform:uppercase">
+                            </div>
+                        </div>
+
+                        <!-- Partner Bank Banner -->
+                        <div class="nv-bank-callout" id="nv_bank_callout">
+                            <div class="nv-bank-callout-content">
+                                <span class="nv-bank-bulb">💡</span>
+                                <span>Initiate payments for your purchases directly from Zoho Books by integrating with one of our partner banks. <a href="javascript:void(0)" class="nv-bank-link">Set Up Now</a></span>
+                            </div>
+                            <button type="button" class="nv-bank-callout-close" id="nv_bank_callout_close" aria-label="Close">&times;</button>
+                        </div>
+
+                        <!-- Multiple Banks List -->
+                        <div id="nv_extra_banks_list" class="nv-extra-banks-list"></div>
+
+                        <!-- Form to Add Additional Bank Account (hidden by default) -->
+                        <div id="nv_extra_bank_box" class="nv-extra-bank-box" hidden>
+                            <div class="nv-extra-bank-title" id="nv_extra_bank_title">Add Additional Bank Account</div>
+                            <div class="nv-row">
+                                <label class="nv-l" for="nv_xb_holder">Account Holder Name</label>
+                                <div class="nv-c"><input type="text" id="nv_xb_holder" class="nv-main" autocomplete="off"></div>
+                            </div>
+                            <div class="nv-row">
+                                <label class="nv-l" for="nv_xb_name">Bank Name</label>
+                                <div class="nv-c"><input type="text" id="nv_xb_name" class="nv-main" autocomplete="off"></div>
+                            </div>
+                            <div class="nv-row">
+                                <label class="nv-l req" for="nv_xb_acc">Account Number*</label>
+                                <div class="nv-c">
+                                    <div class="nv-pwd-wrap nv-main">
+                                        <input type="password" id="nv_xb_acc" class="nv-pwd-input" autocomplete="off">
+                                        <button type="button" class="nv-eye-btn" id="nv_xb_acc_eye" title="Toggle visibility" tabindex="-1">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                                <circle cx="12" cy="12" r="3"></circle>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="nv-row">
+                                <label class="nv-l req" for="nv_xb_acc_re">Re-enter Account Number*</label>
+                                <div class="nv-c"><input type="password" id="nv_xb_acc_re" class="nv-main" autocomplete="off"></div>
+                            </div>
+                            <div class="nv-row">
+                                <label class="nv-l req" for="nv_xb_ifsc">IFSC*</label>
+                                <div class="nv-c"><input type="text" id="nv_xb_ifsc" class="nv-main" maxlength="11" autocomplete="off" style="text-transform:uppercase"></div>
+                            </div>
+                            <div class="nv-cp-form-actions" style="padding-left:186px">
+                                <button type="button" class="btn btn-primary btn-sm" id="nv_xb_save_btn">Save Bank</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="nv_xb_cancel_btn">Cancel</button>
+                                <span class="nv-status" id="nv_xb_status"></span>
+                            </div>
+                        </div>
+
+                        <div class="nv-add-bank-row">
+                            <button type="button" class="nv-add-bank-btn" id="nv_add_bank_btn">
+                                <span style="font-size:16px;line-height:1;margin-right:2px">+</span> Add New Bank
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 6: Remarks -->
+                <div class="nv-pane" data-pane="remarks" hidden>
+                    <label for="nv_remarks" style="display:block;margin-bottom:6px;font-size:13px;font-weight:500">Remarks (For Internal Use)</label>
+                    <textarea id="nv_remarks" rows="4" style="width:100%" placeholder="Enter internal notes about this vendor..."></textarea>
+                </div>
+            </div>
+
+            <div class="nv-foot">
+                <button type="button" class="btn btn-primary" id="nv-save">Save</button>
+                <button type="button" class="btn btn-secondary" id="nv-cancel">Cancel</button>
+                <span class="nv-status" id="nv-status"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== New TDS / TCS modal (antigravity update with New TDS/TCS Page) ========== -->
+    <div id="tx-modal" class="nv-overlay" hidden>
+        <div class="nv-box tx-modal-box" role="dialog" aria-modal="true" aria-labelledby="tx-modal-title">
+            <div class="nv-head">
+                <h3 id="tx-modal-title">New TDS</h3>
+                <button type="button" class="nv-x" id="tx-close" aria-label="Close">&times;</button>
+            </div>
+
+            <div class="tx-modal-body">
+                <!-- Row 1: Tax Name & Rate (%) -->
+                <div class="tx-grid-2">
+                    <div class="tx-field-wrap">
+                        <label class="tx-req" for="tx_name">Tax Name*</label>
+                        <input type="text" id="tx_name" class="form-control" autocomplete="off" placeholder="">
+                    </div>
+                    <div class="tx-field-wrap">
+                        <label class="tx-req" for="tx_rate">Rate (%)*</label>
+                        <input type="number" id="tx_rate" class="form-control" step="any" min="0" max="100" autocomplete="off" placeholder="">
+                    </div>
+                </div>
+
+                <!-- Row 2: Applicable Income Tax Act -->
+                <div class="tx-field-wrap">
+                    <label for="tx_act">Applicable Income Tax Act</label>
+                    <select id="tx_act" class="form-control">
+                        <option value="2" selected>New Income Tax Act 2025</option>
+                        <option value="1">Income Tax Act 1961</option>
+                    </select>
+                </div>
+
+                <!-- Row 3: Section / Nature of Collection -->
+                <div class="tx-field-wrap">
+                    <label class="tx-req" for="tx_section" id="tx_section_lbl">Section*</label>
+                    <select id="tx_section" class="form-control">
+                        <option value="">Select a Section</option>
+                    </select>
+                </div>
+
+                <!-- Row 4: Account Tracking Callout & Edit Options -->
+                <div class="tx-account-callout">
+                    <span class="tx-info-icon">&#9432;</span>
+                    <div class="tx-callout-content">
+                        <span id="tx-account-callout-text">By default, TDS will be tracked under <strong>TDS Payable</strong> and <strong>TDS Receivable</strong> accounts. Click Edit to choose an account of your choice.</span>
+                        <button type="button" class="tx-link-btn" id="tx-edit-accounts">Edit &#9998;</button>
+                    </div>
+                </div>
+
+                <div id="tx-custom-accounts" style="display:none;" class="tx-accounts-grid">
+                    <div class="tx-field-wrap" id="tx-payable-wrap">
+                        <label class="tx-req" for="tx_payable" id="tx-payable-lbl">TDS Payable Account*</label>
+                        <select id="tx_payable" class="form-control">
+                            <option value="">Select an account</option>
+                        </select>
+                    </div>
+                    <div class="tx-field-wrap" id="tx-receivable-wrap">
+                        <label class="tx-req" for="tx_receivable" id="tx-receivable-lbl">TDS Receivable Account*</label>
+                        <select id="tx_receivable" class="form-control">
+                            <option value="">Select an account</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Row 5: Higher TDS Rate Checkbox -->
+                <div class="tx-check-row">
+                    <label class="tx-check-lbl">
+                        <input type="checkbox" id="tx_higher_rate">
+                        <span id="tx_higher_rate_text">This is a Higher TDS Rate</span>
+                    </label>
+                    <span class="tot-help" title="Check this if this tax rate is a higher deduction rate">&#9432;</span>
+                </div>
+
+                <!-- Row 6: Reason for Higher TDS Rate (Conditional) -->
+                <div id="tx-higher-reason-wrap" style="display:none;" class="tx-field-wrap">
+                    <label class="tx-req" for="tx_why" id="tx-why-lbl">Reason for Higher TDS Rate*</label>
+                    <select id="tx_why" class="form-control">
+                        <option value="">Select a reason</option>
+                        <option value="non_filing_of_return" selected>Non-filing of return of income</option>
+                        <option value="pan_not_available">PAN not available / Invalid PAN</option>
+                    </select>
+                </div>
+
+                <!-- Row 7: Applicable Period -->
+                <div class="tx-section-heading">
+                    <span>Applicable Period</span>
+                    <span class="tot-help" title="Validity period for this tax rate">&#9432;</span>
+                </div>
+                <div class="tx-date-grid">
+                    <div class="tx-field-wrap">
+                        <label for="tx_start_date">Start Date</label>
+                        <input type="date" id="tx_start_date" class="form-control">
+                    </div>
+                    <div class="tx-field-wrap">
+                        <label for="tx_end_date">End Date</label>
+                        <input type="date" id="tx_end_date" class="form-control" placeholder="dd/MM/yyyy">
+                    </div>
+                </div>
+            </div>
+
+            <div class="nv-foot">
+                <button type="button" class="btn btn-primary" id="tx-save">Save</button>
+                <button type="button" class="btn btn-secondary" id="tx-cancel">Cancel</button>
+                <span class="nv-status" id="tx-status"></span>
+            </div>
+        </div>
+    </div>
+
     <script src="js/extension.js"></script>
 </body>
+
 </html>
